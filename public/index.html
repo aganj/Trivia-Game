@@ -62,7 +62,10 @@
 
       <div id="active-game-header" class="active-game-header hidden">
         <div class="progress-container">
-          <div class="question-count" id="header-q-count">Question -- / --</div>
+          <div class="question-count" id="header-q-count">
+            Question -- / --
+            <span id="tiebreaker-badge" class="badge danger hidden" style="margin-left: 0.5rem;">TIEBREAKER</span>
+          </div>
           <div class="progress-bar"><div class="progress-fill" id="header-progress-fill"></div></div>
         </div>
         <div class="circular-timer hidden" id="header-timer">
@@ -71,16 +74,18 @@
       </div>
 
       <div id="screen-spectate" class="screen hidden">
-        <div id="spectate-content" class="card hidden">
-          <div id="spectate-meta" class="question-meta"></div>
-          <p id="spectate-question" class="question-text"></p>
-          <div id="spectate-vote-tally" class="vote-tally hidden"></div>
-          <div id="spectate-bets" class="spectate-bets-list hidden"></div>
-          <div id="spectate-choices" class="choices-display"></div>
-        </div>
-        <div id="spectate-scoreboard-card" class="card hidden">
-          <h2>Live Ranking Board of Players</h2>
-          <div id="spectate-scores" class="scoreboard"></div>
+        <div id="spectate-split" class="split-layout">
+          <div id="spectate-content" class="card hidden">
+            <div id="spectate-meta" class="question-meta"></div>
+            <p id="spectate-question" class="question-text"></p>
+            <div id="spectate-vote-tally" class="vote-tally hidden"></div>
+            <div id="spectate-bets" class="spectate-bets-list hidden"></div>
+            <div id="spectate-choices" class="choices-display"></div>
+          </div>
+          <div id="spectate-scoreboard-card" class="card hidden">
+            <h2>Live Ranking Board</h2>
+            <div id="spectate-scores" class="scoreboard"></div>
+          </div>
         </div>
       </div>
 
@@ -97,6 +102,13 @@
           <p id="vote-prompt" class="question-text">Pick the next category</p>
           <div id="vote-options" class="choices-player"></div>
           <p id="vote-status" class="status-msg hidden"></p>
+        </div>
+      </div>
+
+      <div id="screen-category-reveal" class="screen hidden">
+        <div class="card text-center reveal-animation">
+          <h2 style="color: var(--accent2); margin-bottom: 0.5rem;">The Category Is</h2>
+          <p id="revealed-category" class="question-text neon-text" style="font-size: 2.5rem; margin-top: 1rem;"></p>
         </div>
       </div>
 
@@ -132,30 +144,34 @@
       </div>
 
       <div id="screen-question" class="screen hidden">
-        <div class="card">
-          <div id="q-meta" class="question-meta"></div>
-          <p id="q-text" class="question-text"></p>
-          <div id="choices" class="choices-player choices-grid"></div>
-          <button id="btn-skip" class="btn btn-secondary btn-block hidden" style="margin-top: 1.5rem;">Skip (Get €10)</button>
-          <p id="answer-status" class="status-msg hidden"></p>
-        </div>
-        
-        <div id="question-scoreboard-card" class="card hidden">
-          <h2>Live Ranking Board of Players</h2>
-          <div id="question-scores" class="scoreboard"></div>
+        <div id="question-split" class="split-layout">
+          <div class="card">
+            <div id="q-meta" class="question-meta"></div>
+            <p id="q-text" class="question-text hidden"></p>
+            <div id="choices" class="choices-player choices-grid"></div>
+            <button id="btn-skip" class="btn btn-secondary btn-block hidden" style="margin-top: 1.5rem;">Skip (Get €10)</button>
+            <p id="answer-status" class="status-msg hidden"></p>
+          </div>
+          
+          <div id="question-scoreboard-card" class="card hidden">
+            <h2>Live Ranking Board</h2>
+            <div id="question-scores" class="scoreboard"></div>
+          </div>
         </div>
       </div>
 
       <div id="screen-finished" class="screen hidden">
-        <div class="card question-box text-center">
-          <h2 style="color: var(--muted);">Game over</h2>
-          <div id="final-rank" class="question-text" style="font-size: 1.5rem; margin-top: 1rem;"></div>
-          <button id="btn-restart" class="btn btn-secondary btn-block hidden" style="margin-top: 1rem;">Back to Lobby</button>
-        </div>
-        
-        <div class="card" id="final-scoreboard-card">
-          <h2>Final Ranking Board</h2>
-          <div id="final-scores" class="scoreboard"></div>
+        <div id="finished-split" class="split-layout has-sidebar">
+          <div class="card question-box text-center">
+            <h2 style="color: var(--muted);">Game over</h2>
+            <div id="final-rank" class="question-text" style="font-size: 1.5rem; margin-top: 1rem;"></div>
+            <button id="btn-restart" class="btn btn-secondary btn-block hidden" style="margin-top: 1rem;">Back to Lobby</button>
+          </div>
+          
+          <div class="card" id="final-scoreboard-card">
+            <h2>Final Ranking Board</h2>
+            <div id="final-scores" class="scoreboard"></div>
+          </div>
         </div>
       </div>
 

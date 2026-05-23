@@ -57,9 +57,9 @@ export function pickVoteOptions(room) {
   return shuffle(sorted.slice(0, VOTE_OPTIONS_COUNT));
 }
 
-function tallyVotes(room) {
+function tallyVotes(room, activePlayers) {
   const counts = {};
-  for (const p of room.players) {
+  for (const p of activePlayers) {
     if (p.categoryVote) counts[p.categoryVote] = (counts[p.categoryVote] || 0) + 1;
   }
   let max = 0;
@@ -73,10 +73,10 @@ function tallyVotes(room) {
   if (winners.length === 1) return winners[0];
   if (winners.length > 1) {
     let lowestScore = Infinity;
-    for (const p of room.players) {
+    for (const p of activePlayers) {
       if (winners.includes(p.categoryVote) && p.score < lowestScore) lowestScore = p.score;
     }
-    const lowestVotersCats = room.players
+    const lowestVotersCats = activePlayers
       .filter(p => winners.includes(p.categoryVote) && p.score === lowestScore)
       .map(p => p.categoryVote);
     if (lowestVotersCats.length > 0) return lowestVotersCats[Math.floor(Math.random() * lowestVotersCats.length)];
@@ -86,7 +86,7 @@ function tallyVotes(room) {
 }
 
 function hasPlayers(room) { return room.players.length > 0; }
-function isActivePhase(phase) { return ['voting', 'betting', 'bet_reveal', 'question', 'reveal'].includes(phase); }
+function isActivePhase(phase) { return ['voting', 'category_reveal', 'betting', 'bet_reveal', 'question', 'reveal'].includes(phase); }
 
 function sanitizePublicState(room) {
   const current = room.currentQuestion;
@@ -111,11 +111,13 @@ function sanitizePublicState(room) {
   return {
     roomCode: room.code,
     phase,
+    tiebreakerMode: room.tiebreakerMode,
     players: room.players.map((p) => ({
       id: p.id,
       name: p.name,
       avatar: p.avatar,
       score: p.score,
+      isEliminated: room.tiebreakerMode ? !room.tiedPlayers.includes(p.id) : false,
       hasAnswered: phase === 'question' ? p.hasAnswered : undefined,
       hasVoted: phase === 'voting' ? p.hasVoted : undefined,
       lastAnswerCorrect: phase === 'reveal' ? p.lastAnswerCorrect : undefined,
@@ -157,10 +159,11 @@ function buildVoteTally(room) {
 }
 
 export class GameManager {
-  constructor({ questionsPerGame, answerTimeSec, voteTimeSec, betTimeSec, betRevealTimeSec, revealTimeSec, minPlayers, apiKey, onTick }) {
+  constructor({ questionsPerGame, answerTimeSec, voteTimeSec, categoryRevealTimeSec, betTimeSec, betRevealTimeSec, revealTimeSec, minPlayers, apiKey, onTick }) {
     this.questionsPerGame = questionsPerGame;
     this.answerTimeSec = answerTimeSec;
     this.voteTimeSec = voteTimeSec;
+    this.categoryRevealTimeSec = categoryRevealTimeSec;
     this.betTimeSec = betTimeSec;
     this.betRevealTimeSec = betRevealTimeSec;
     this.revealTimeSec = revealTimeSec;
@@ -178,7 +181,7 @@ export class GameManager {
       code, organizerSocketId, phase: 'lobby', players: [], currentQuestion: null,
       currentIndex: 0, totalQuestions: this.questionsPerGame, timeLeft: 0,
       voteOptions: [], roundCategory: null, roundDifficulty: null, statusMessage: null,
-      lastPlayedCategory: null, categoryPlayCount: {},
+      lastPlayedCategory: null, categoryPlayCount: {}, tiebreakerMode: false, tiedPlayers: []
     };
     this.rooms.set(code, room);
     return { roomCode: code, state: sanitizePublicState(room) };
@@ -216,6 +219,8 @@ export class GameManager {
   removeRoom(roomCode) {
     this.clearTimer(roomCode);
     this.rooms.delete(roomCode);
+    // Broadcast explicitly to kick clients back to home screen
+    this.onTick?.(roomCode, { phase: 'closed' });
   }
 
   pauseGame(room) {
@@ -238,6 +243,12 @@ export class GameManager {
     room.categoryPlayCount[categoryId] = (room.categoryPlayCount[categoryId] ?? 0) + 1;
   }
 
+  getActivePlayers(room) {
+    return room.tiebreakerMode 
+      ? room.players.filter(p => room.tiedPlayers.includes(p.id)) 
+      : room.players;
+  }
+
   startGame(roomCode, socketId, { asOrganizer = false, totalQuestions } = {}) {
     const room = this.rooms.get(roomCode);
     if (!room) return { error: 'Room not found' };
@@ -248,6 +259,7 @@ export class GameManager {
     room.totalQuestions = totalQuestions || this.questionsPerGame;
     for (const p of room.players) p.score = 0;
     room.currentIndex = 0; room.lastPlayedCategory = null; room.categoryPlayCount = {};
+    room.tiebreakerMode = false; room.tiedPlayers = [];
     this.beginVoting(room);
     return { state: sanitizePublicState(room) };
   }
@@ -262,8 +274,10 @@ export class GameManager {
     room.currentQuestion = null;
     room.lastPlayedCategory = null;
     room.categoryPlayCount = {};
+    room.tiebreakerMode = false;
+    room.tiedPlayers = [];
     for (const p of room.players) {
-      p.score = 0; p.bets = {}; p.skipped = false; p.hasVoted = false; p.hasAnswered = false;
+      p.score = 0; p.bets = {}; p.skipped = false; p.hasVoted = false; p.hasAnswered = false; p.lockedBets = false;
     }
     this.clearTimer(room.code);
     return { state: sanitizePublicState(room) };
@@ -296,10 +310,12 @@ export class GameManager {
     if (!room || room.phase !== 'voting') return { error: 'Not voting right now' };
     const player = room.players.find((p) => p.id === playerId);
     if (!player) return { error: 'Player not found' };
+    if (room.tiebreakerMode && !room.tiedPlayers.includes(playerId)) return { error: 'You are eliminated' };
     if (player.hasVoted) return { error: 'Already voted' };
 
     player.hasVoted = true; player.categoryVote = categoryId;
-    if (room.players.every((p) => p.hasVoted)) {
+    const active = this.getActivePlayers(room);
+    if (active.every((p) => p.hasVoted)) {
       this.clearTimer(roomCode);
       this.resolveVotingAndLoadQuestion(roomCode);
     }
@@ -312,7 +328,8 @@ export class GameManager {
     if (!hasPlayers(room)) return this.removeRoom(room.code);
 
     this.clearTimer(roomCode);
-    room.roundCategory = tallyVotes(room);
+    const active = this.getActivePlayers(room);
+    room.roundCategory = tallyVotes(room, active);
 
     try {
       const question = await this.fetchQuestion(room.roundCategory, room.roundDifficulty);
@@ -320,12 +337,7 @@ export class GameManager {
       room.currentQuestion = question;
       this.recordCategoryPlayed(room, room.roundCategory);
       
-      // Skip betting on round 1 (idx=0) or if only 1 player
-      if (room.currentIndex === 0 || room.players.length <= 1) {
-        this.beginQuestion(room);
-      } else {
-        this.beginBetting(room);
-      }
+      this.beginCategoryReveal(room);
     } catch (err) {
       if (!hasPlayers(room)) return this.removeRoom(room.code);
       room.phase = 'voting'; room.statusMessage = err.message || 'Failed to load question — vote again';
@@ -333,12 +345,51 @@ export class GameManager {
     }
   }
 
+  beginCategoryReveal(room) {
+    room.phase = 'category_reveal';
+    room.phaseTimeMax = this.categoryRevealTimeSec;
+    room.timeLeft = this.categoryRevealTimeSec;
+    room.statusMessage = null;
+
+    this.startTimer(room, () => {
+      if (!hasPlayers(room)) return this.removeRoom(room.code);
+      
+      const active = this.getActivePlayers(room);
+      if (room.currentIndex === 0 || active.length <= 1) {
+        this.beginQuestion(room);
+      } else {
+        this.beginBetting(room);
+      }
+    });
+    this.emit(room);
+  }
+
   beginBetting(room) {
+    const active = this.getActivePlayers(room);
+    const canAnyoneBet = active.some(p => p.score >= 10);
+    
+    // If absolutely no one has money to bet, bypass betting phase immediately
+    if (!canAnyoneBet) {
+      this.beginQuestion(room);
+      return;
+    }
+
+    // Auto-lock broke players so they don't hold up the round
+    for (const p of active) {
+      if (p.score < 10) p.lockedBets = true;
+    }
+
     room.phase = 'betting';
     room.phaseTimeMax = this.betTimeSec;
     room.timeLeft = this.betTimeSec;
     room.statusMessage = 'Place your bets!';
     
+    // Check if everyone was auto-locked
+    if (active.every(p => p.lockedBets)) {
+      this.revealBets(room);
+      return;
+    }
+
     this.startTimer(room, () => {
       if (!hasPlayers(room)) return this.removeRoom(room.code);
       this.revealBets(room);
@@ -351,6 +402,7 @@ export class GameManager {
     if (!room || room.phase !== 'betting') return { error: 'Not betting right now' };
     const player = room.players.find(p => p.id === playerId);
     if (!player) return { error: 'Player not found' };
+    if (room.tiebreakerMode && !room.tiedPlayers.includes(playerId)) return { error: 'You are eliminated' };
     if (player.lockedBets) return { error: 'Your bets are locked' };
     if (playerId === targetId) return { error: 'Cannot bet on yourself' };
     if (amount % 10 !== 0) return { error: 'Amount must be a multiple of €10' };
@@ -375,9 +427,11 @@ export class GameManager {
     if (!room || room.phase !== 'betting') return { error: 'Not betting right now' };
     const player = room.players.find(p => p.id === playerId);
     if (!player) return { error: 'Player not found' };
+    if (room.tiebreakerMode && !room.tiedPlayers.includes(playerId)) return { error: 'You are eliminated' };
 
     player.lockedBets = true;
-    if (room.players.every(p => p.lockedBets)) {
+    const active = this.getActivePlayers(room);
+    if (active.every(p => p.lockedBets)) {
       this.clearTimer(roomCode);
       this.revealBets(room);
     }
@@ -439,6 +493,7 @@ export class GameManager {
     if (!room || room.phase !== 'question') return { error: 'Not accepting answers' };
     const player = room.players.find((p) => p.id === playerId);
     if (!player) return { error: 'Player not found' };
+    if (room.tiebreakerMode && !room.tiedPlayers.includes(playerId)) return { error: 'You are eliminated' };
     if (player.hasAnswered) return { error: 'Already answered' };
 
     const idx = Number(choiceIndex);
@@ -451,7 +506,8 @@ export class GameManager {
     }
 
     player.hasAnswered = true; player.currentChoice = idx;
-    if (room.players.every((p) => p.hasAnswered)) {
+    const active = this.getActivePlayers(room);
+    if (active.every((p) => p.hasAnswered)) {
       this.clearTimer(roomCode);
       return this.revealAnswers(roomCode);
     }
@@ -466,8 +522,9 @@ export class GameManager {
     this.clearTimer(roomCode);
     const q = room.currentQuestion;
 
-    // Correctness points
-    for (const p of room.players) {
+    // Correctness points (only apply to active players)
+    const active = this.getActivePlayers(room);
+    for (const p of active) {
       if (p.skipped) {
         p.score += 10; p.lastAnswerCorrect = false;
       } else if (p.currentChoice === q.correctIndex) {
@@ -479,8 +536,8 @@ export class GameManager {
       }
     }
 
-    // Process bets
-    for (const p of room.players) {
+    // Process bets (only active players can bet, but they might bet on anyone)
+    for (const p of active) {
       if (!p.bets) continue;
       for (const [targetId, bet] of Object.entries(p.bets)) {
         const target = room.players.find(t => t.id === targetId);
@@ -514,6 +571,19 @@ export class GameManager {
     room.currentIndex += 1;
 
     if (room.currentIndex >= room.totalQuestions) {
+      const active = this.getActivePlayers(room);
+      const topScore = Math.max(...active.map(p => p.score));
+      const topPlayers = active.filter(p => p.score === topScore);
+
+      // Check for Tiebreaker
+      if (topPlayers.length > 1) {
+        room.tiebreakerMode = true;
+        room.tiedPlayers = topPlayers.map(p => p.id);
+        room.totalQuestions += 1; // Extend by 1 round
+        this.beginVoting(room);
+        return { state: sanitizePublicState(room) };
+      }
+
       room.phase = 'finished'; room.statusMessage = null; this.emit(room);
       return { state: sanitizePublicState(room) };
     }

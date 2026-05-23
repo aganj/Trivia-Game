@@ -12,9 +12,10 @@ const PORT = Number(process.env.PORT) || 3000;
 const QUESTIONS_PER_GAME = Number(process.env.QUESTIONS_PER_GAME) || 10;
 const ANSWER_TIME_SEC = Number(process.env.ANSWER_TIME_SEC) || 20;
 const VOTE_TIME_SEC = Number(process.env.VOTE_TIME_SEC) || 15;
+const CATEGORY_REVEAL_TIME_SEC = 3; // Time to show the chosen category
 const REVEAL_TIME_SEC = Number(process.env.REVEAL_TIME_SEC) || 6;
-const BET_TIME_SEC = Number(process.env.BET_TIME_SEC) || 30; // Increased betting time
-const BET_REVEAL_TIME_SEC = 5; // Window of time to see locked bets
+const BET_TIME_SEC = Number(process.env.BET_TIME_SEC) || 30;
+const BET_REVEAL_TIME_SEC = 5;
 const MIN_PLAYERS = 1;
 
 const app = express();
@@ -24,6 +25,7 @@ const games = new GameManager({
   questionsPerGame: QUESTIONS_PER_GAME,
   answerTimeSec: ANSWER_TIME_SEC,
   voteTimeSec: VOTE_TIME_SEC,
+  categoryRevealTimeSec: CATEGORY_REVEAL_TIME_SEC,
   revealTimeSec: REVEAL_TIME_SEC,
   betTimeSec: BET_TIME_SEC,
   betRevealTimeSec: BET_REVEAL_TIME_SEC,

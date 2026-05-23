@@ -6,6 +6,9 @@ let selectedCategory = null;
 let joinUrl = '';
 let avatarDataUrl = null;
 
+let lastPhase = null;
+let lastQuestionIndex = null;
+
 const $ = (id) => document.getElementById(id);
 
 const screens = {
@@ -14,6 +17,7 @@ const screens = {
   spectate: $('screen-spectate'),
   waiting: $('screen-waiting'),
   voting: $('screen-voting'),
+  category_reveal: $('screen-category-reveal'),
   betting: $('screen-betting'),
   question: $('screen-question'),
   finished: $('screen-finished'),
@@ -63,21 +67,34 @@ function renderCircularTimer(timeLeft, timeMax, phaseKey) {
   else timerEl.classList.remove('urgent');
 }
 
-function renderChoiceDisplays(choices, reveal = false) {
+function renderChoiceDisplays(choices, reveal = false, allPlayers = []) {
   const prefixes = ['A', 'B', 'C', 'D'];
-  return choices
-    .map((c, i) => {
+  return choices.map((c, i) => {
       let cls = 'choice-display';
       if (reveal) {
         if (c.isCorrect) cls += ' correct';
         else cls += ' wrong-highlight';
       }
+      
+      let avatarsHtml = '';
+      if (reveal) {
+        const choosers = allPlayers.filter(p => p.currentChoice === i);
+        if (choosers.length > 0) {
+          avatarsHtml = '<div class="choice-avatars">' + choosers.map(p => {
+            const avatarSrc = p.avatar || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="%2348bfe3"/></svg>';
+            return `<img class="player-avatar" src="${avatarSrc}" title="${escapeHtml(p.name)}">`;
+          }).join('') + '</div>';
+        }
+      }
+
       return `<div class="${cls}">
-        <span class="choice-prefix">${prefixes[i] || ''}</span>
-        <span class="choice-text">${escapeHtml(c.text)}</span>
+        <div style="display:flex; align-items:center; gap:1rem; width:100%;">
+          <span class="choice-prefix">${prefixes[i] || ''}</span>
+          <span class="choice-text">${escapeHtml(c.text)}</span>
+        </div>
+        ${avatarsHtml}
       </div>`;
-    })
-    .join('');
+    }).join('');
 }
 
 async function loadNetworkInfo() {
@@ -128,9 +145,10 @@ function renderScoreboard(players, containerId, reveal = false) {
       const extra = reveal && p.lastAnswerCorrect === true ? ' ✓' : reveal && p.lastAnswerCorrect === false ? ' ✗' : '';
       const leader = p.score === top && top > 0 ? ' leader' : '';
       const isMe = p.id === myPlayerId ? ' (you)' : '';
-      const avatarSrc = p.avatar || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%2348bfe3"/></svg>';
+      const eliminated = p.isEliminated ? ' opacity: 0.5;' : '';
+      const avatarSrc = p.avatar || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="%2348bfe3"/></svg>';
       
-      return `<div class="score-row${leader}">
+      return `<div class="score-row${leader}" style="${eliminated}">
         <div class="score-player-info">
            <img class="player-avatar" src="${avatarSrc}">
            <span class="name">${escapeHtml(p.name)}${isMe}${extra}</span>
@@ -152,8 +170,8 @@ function renderLobby(s) {
     list.innerHTML = '<li class="empty-state">No players yet — share the code</li>';
   } else {
     list.innerHTML = s.players.map((p) => {
-      const avatarSrc = p.avatar || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%2348bfe3"/></svg>';
-      return `<li><div class="player-name"><img class="player-avatar" style="width:30px;height:30px;margin-right:10px" src="${avatarSrc}">${escapeHtml(p.name)}${p.id === myPlayerId ? ' (you)' : ''}</div></li>`;
+      const avatarSrc = p.avatar || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="%2348bfe3"/></svg>';
+      return `<li><div class="player-name"><img class="player-avatar" style="width:50px;height:50px;margin-right:10px" src="${avatarSrc}">${escapeHtml(p.name)}${p.id === myPlayerId ? ' (you)' : ''}</div></li>`;
     }).join('');
   }
 
@@ -199,6 +217,11 @@ function renderSpectateContent(s) {
       $('spectate-choices').innerHTML = (s.voteOptions || [])
         .map((opt) => `<div class="choice-display">${escapeHtml(opt.label)}</div>`).join('');
     }
+    return;
+  }
+
+  if (s.phase === 'category_reveal') {
+    content.classList.add('hidden');
     return;
   }
 
@@ -248,7 +271,7 @@ function renderSpectateContent(s) {
     `;
     $('spectate-question').textContent = q.text;
     $('spectate-choices').className = 'choices-display choices-grid';
-    $('spectate-choices').innerHTML = renderChoiceDisplays(q.choices, s.phase === 'reveal');
+    $('spectate-choices').innerHTML = renderChoiceDisplays(q.choices, s.phase === 'reveal', s.players);
     return;
   }
 
@@ -256,21 +279,26 @@ function renderSpectateContent(s) {
 }
 
 function renderSpectate(s) {
-  showScreen('spectate');
+  if (s.phase === 'category_reveal') {
+    showScreen('category_reveal');
+    $('revealed-category').textContent = s.roundCategory;
+  } else {
+    showScreen('spectate');
+    renderSpectateContent(s);
+  }
+  
   $('subtitle').textContent = `Room ${s.roomCode}`;
   
-  const timedPhases = ['voting', 'betting', 'bet_reveal', 'question', 'reveal'];
+  const timedPhases = ['voting', 'betting', 'question'];
   if (timedPhases.includes(s.phase)) {
     renderCircularTimer(s.timeLeft, s.timeMax, timerPhaseKey(s));
   } else {
     $('header-timer').classList.add('hidden');
   }
 
-  renderSpectateContent(s);
-  
-  // Show scoreboard underneath ONLY during the reveal phase
   const isReveal = s.phase === 'reveal';
   $('spectate-scoreboard-card').classList.toggle('hidden', !isReveal);
+  $('spectate-split').classList.toggle('has-sidebar', isReveal);
   if (isReveal) {
     renderScoreboard(s.players, 'spectate-scores', true);
   }
@@ -283,7 +311,7 @@ function renderVoteOptions(s, me) {
   container.innerHTML = s.voteOptions.map((opt) => {
       let cls = 'choice-btn vote-btn';
       if (selectedCategory === opt.id) cls += ' selected';
-      const disabled = s.phase !== 'voting' || me?.hasVoted;
+      const disabled = s.phase !== 'voting' || me?.hasVoted || me?.isEliminated;
       return `<button class="${cls}" data-id="${opt.id}" ${disabled ? 'disabled' : ''}>${escapeHtml(opt.label)}</button>`;
     }).join('');
 
@@ -302,7 +330,7 @@ function submitVote(categoryId) {
   });
 }
 
-function renderChoices(q, phase, myAnswer, containerId, me) {
+function renderChoices(q, phase, myAnswer, containerId, me, allPlayers = []) {
   const container = $(containerId);
   const prefixes = ['A', 'B', 'C', 'D'];
   container.innerHTML = q.choices.map((c, i) => {
@@ -312,10 +340,25 @@ function renderChoices(q, phase, myAnswer, containerId, me) {
         if (c.isCorrect) cls += ' correct';
         else if (myAnswer === i) cls += ' incorrect';
       }
-      const disabled = phase !== 'question' || (myAnswer !== null && myAnswer !== undefined);
+      const disabled = phase !== 'question' || (myAnswer !== null && myAnswer !== undefined) || me?.isEliminated;
+
+      let avatarsHtml = '';
+      if (phase === 'reveal') {
+        const choosers = allPlayers.filter(p => p.currentChoice === i);
+        if (choosers.length > 0) {
+          avatarsHtml = '<div class="choice-avatars">' + choosers.map(p => {
+            const avatarSrc = p.avatar || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="%2348bfe3"/></svg>';
+            return `<img class="player-avatar" src="${avatarSrc}" title="${escapeHtml(p.name)}">`;
+          }).join('') + '</div>';
+        }
+      }
+
       return `<button class="${cls}" data-index="${i}" ${disabled ? 'disabled' : ''}>
-        <span class="choice-prefix">${prefixes[i] || ''}</span>
-        <span class="choice-text">${escapeHtml(c.text)}</span>
+        <div style="display:flex; align-items:center; gap:1rem; width:100%;">
+          <span class="choice-prefix">${prefixes[i] || ''}</span>
+          <span class="choice-text">${escapeHtml(c.text)}</span>
+        </div>
+        ${avatarsHtml}
       </button>`;
     }).join('');
 
@@ -333,7 +376,7 @@ function submitAnswer(index) {
     if (res?.error) { selectedChoice = null; $('answer-status').textContent = res.error; $('answer-status').classList.remove('hidden'); return; }
     const txt = index === -1 ? 'Question skipped!' : 'Answer locked in!';
     $('answer-status').textContent = txt; $('answer-status').classList.remove('hidden');
-    renderChoices(state.question, 'question', index, 'choices', state.players.find((p) => p.id === myPlayerId));
+    renderChoices(state.question, 'question', index, 'choices', state.players.find((p) => p.id === myPlayerId), state.players);
     $('btn-skip').classList.add('hidden');
   });
 }
@@ -348,25 +391,35 @@ betSlider.addEventListener('input', () => {
 let state = null;
 
 function onState(s) {
+  // Catch the globally emitted close state to return everything back to home
+  if (s && s.phase === 'closed') {
+    location.href = '/';
+    return;
+  }
+
   state = s;
   const me = s.players.find((p) => p.id === myPlayerId);
 
+  const phaseChanged = lastPhase !== s.phase || lastQuestionIndex !== s.currentIndex;
+  lastPhase = s.phase;
+  lastQuestionIndex = s.currentIndex;
+
   // Global header info mapping
   if (s.phase !== 'lobby' && s.phase !== 'home' && s.phase !== 'finished') {
-    $('header-q-count').textContent = `Question ${s.currentIndex + 1} / ${s.totalQuestions}`;
+    $('header-q-count').childNodes[0].nodeValue = `Question ${s.currentIndex + 1} / ${s.totalQuestions} `;
+    $('tiebreaker-badge').classList.toggle('hidden', !s.tiebreakerMode);
+    
     const progressPct = ((s.currentIndex + 1) / s.totalQuestions) * 100;
     $('header-progress-fill').style.width = `${progressPct}%`;
   }
 
-  // Handle active phase timers globally
-  const timedPhases = ['voting', 'betting', 'bet_reveal', 'question', 'reveal'];
+  const timedPhases = ['voting', 'betting', 'question'];
   if (timedPhases.includes(s.phase)) {
     renderCircularTimer(s.timeLeft, s.timeMax, timerPhaseKey(s));
   } else {
     $('header-timer').classList.add('hidden');
   }
 
-  // Spectator Device logic
   if (isOrganizer && !myPlayerId) {
     if (s.phase === 'lobby') { showScreen('lobby'); $('subtitle').textContent = `Room ${s.roomCode}`; renderLobby(s); return; }
     if (s.phase === 'finished') {
@@ -378,6 +431,17 @@ function onState(s) {
     }
     renderSpectate(s);
     return;
+  }
+
+  // Player Auto-scroll logic 
+  if (phaseChanged && myPlayerId) {
+    setTimeout(() => {
+      if (s.phase === 'voting') {
+        $('vote-options')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (s.phase === 'question') {
+        $('choices')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 150);
   }
 
   // Player logic follows
@@ -394,9 +458,27 @@ function onState(s) {
   if (s.phase === 'voting') {
     showScreen('voting');
     $('subtitle').textContent = `Room ${s.roomCode}`;
-    if (!me?.hasVoted) { selectedCategory = null; $('vote-status').classList.add('hidden'); }
-    $('vote-meta').innerHTML = `<span class="badge">${escapeHtml(s.roundDifficulty)} next</span>`;
+    
+    if (!me?.hasVoted) { 
+      selectedCategory = null; 
+      $('vote-status').classList.add('hidden'); 
+    }
+    
+    // Hide difficulty string, just provide instructions directly
+    $('vote-meta').innerHTML = '';
+    
+    if (me?.isEliminated) {
+      $('vote-status').classList.remove('hidden');
+      $('vote-status').textContent = 'You are eliminated. Spectating tiebreaker...';
+    }
+    
     renderVoteOptions(s, me);
+    return;
+  }
+
+  if (s.phase === 'category_reveal') {
+    showScreen('category_reveal');
+    $('revealed-category').textContent = s.roundCategory;
     return;
   }
 
@@ -405,7 +487,17 @@ function onState(s) {
     $('subtitle').textContent = `Room ${s.roomCode}`;
     $('bet-meta').innerHTML = `<span class="badge">Next: ${escapeHtml(s.roundCategory)}</span>`;
 
-    if (s.phase === 'bet_reveal' || me?.lockedBets) {
+    if (me?.isEliminated) {
+      $('bet-controls').classList.add('hidden');
+      $('btn-lock-bets').classList.add('hidden');
+      $('bet-status').classList.remove('hidden');
+      $('bet-status').textContent = 'You are eliminated! Spectating...';
+    } else if (me?.score < 10) {
+      $('bet-controls').classList.add('hidden');
+      $('btn-lock-bets').classList.add('hidden');
+      $('bet-status').classList.remove('hidden');
+      $('bet-status').innerHTML = 'You are too broke to bet! 😭<br>Waiting for others...';
+    } else if (s.phase === 'bet_reveal' || me?.lockedBets) {
       $('bet-controls').classList.add('hidden');
       $('btn-lock-bets').classList.add('hidden');
       $('bet-status').classList.remove('hidden');
@@ -416,7 +508,6 @@ function onState(s) {
       $('bet-status').classList.add('hidden');
       $('bet-balance').textContent = `Your Balance: €${me?.score || 0}`;
 
-      // Config slider
       betSlider.max = me.score;
       if (Number(betSlider.value) > me.score) betSlider.value = me.score;
       betDisplay.textContent = '€' + betSlider.value;
@@ -442,16 +533,24 @@ function onState(s) {
     const q = s.question;
     if (!q) return;
 
+    // IMPORTANT: Keep question text hidden on the player screen to encourage looking at the main screen.
+    $('q-text').classList.add('hidden');
+
     const isReveal = s.phase === 'reveal';
 
-    // Show scoreboard ONLY on reveal
+    // Enable Split layout right sidebar scoreboard for players during reveal
     $('question-scoreboard-card').classList.toggle('hidden', !isReveal);
+    $('question-split').classList.toggle('has-sidebar', isReveal);
     if (isReveal) {
       renderScoreboard(s.players, 'question-scores', true);
     }
 
     if (!isReveal) {
-      if (!me?.hasAnswered) {
+      if (me?.isEliminated) {
+        $('answer-status').textContent = 'Spectating...';
+        $('answer-status').classList.remove('hidden');
+        $('btn-skip').classList.add('hidden');
+      } else if (!me?.hasAnswered) {
         selectedChoice = null;
         $('answer-status').classList.add('hidden');
         $('btn-skip').classList.remove('hidden');
@@ -465,7 +564,9 @@ function onState(s) {
       }
     } else {
       $('answer-status').classList.add('hidden');
-      if (me?.skipped) {
+      if (me?.isEliminated) {
+        $('btn-skip').classList.add('hidden');
+      } else if (me?.skipped) {
         $('btn-skip').classList.remove('hidden');
         $('btn-skip').disabled = true;
         $('btn-skip').classList.add('selected');
@@ -477,14 +578,17 @@ function onState(s) {
       }
     }
 
-    $('q-meta').innerHTML = `
-      <span class="badge">${escapeHtml(q.category)}</span>
-      <span class="badge">${escapeHtml(q.difficulty)}</span>
-    `;
-    $('q-text').textContent = q.text;
+    if (isReveal) {
+      $('q-meta').innerHTML = `
+        <span class="badge">${escapeHtml(q.category)}</span>
+        <span class="badge">${escapeHtml(q.difficulty)}</span>
+      `;
+    } else {
+      $('q-meta').innerHTML = `<span class="badge" style="border: none; background: rgba(255,255,255,0.1); color: var(--accent2); font-size: 1.1rem; padding: 0.5rem 1rem;">Pick your answer</span>`;
+    }
 
     const myAnswer = isReveal ? me?.currentChoice : selectedChoice;
-    renderChoices(q, s.phase, myAnswer, 'choices', me);
+    renderChoices(q, s.phase, myAnswer, 'choices', me, s.players);
     if (isReveal) selectedChoice = null;
     return;
   }
@@ -497,7 +601,6 @@ function onState(s) {
     $('final-rank').textContent = meFinal ? `You finished #${rank} with €${meFinal.score}` : 'Game over';
     $('btn-restart').classList.add('hidden'); // Players don't restart, only host
     
-    // Always render final scores at the end of the game
     renderScoreboard(s.players, 'final-scores', false);
   }
 }
