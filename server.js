@@ -12,7 +12,8 @@ const PORT = Number(process.env.PORT) || 3000;
 const QUESTIONS_PER_GAME = Number(process.env.QUESTIONS_PER_GAME) || 10;
 const ANSWER_TIME_SEC = Number(process.env.ANSWER_TIME_SEC) || 20;
 const VOTE_TIME_SEC = Number(process.env.VOTE_TIME_SEC) || 15;
-const REVEAL_TIME_SEC = Number(process.env.REVEAL_TIME_SEC) || 4;
+const REVEAL_TIME_SEC = Number(process.env.REVEAL_TIME_SEC) || 6; // slightly longer to read bets
+const BET_TIME_SEC = Number(process.env.BET_TIME_SEC) || 20;
 const MIN_PLAYERS = 1;
 
 const app = express();
@@ -23,6 +24,7 @@ const games = new GameManager({
   answerTimeSec: ANSWER_TIME_SEC,
   voteTimeSec: VOTE_TIME_SEC,
   revealTimeSec: REVEAL_TIME_SEC,
+  betTimeSec: BET_TIME_SEC,
   minPlayers: MIN_PLAYERS,
   apiKey: process.env.TRIVIA_API_KEY,
   onTick: (roomCode, state) => {
@@ -120,6 +122,26 @@ io.on('connection', (socket) => {
       cb?.({ error: result.error });
       return;
     }
+    io.to(roomCode).emit('game:state', result.state);
+    cb?.({ ok: true });
+  });
+
+  socket.on('player:bet', ({ targetId, amount, isFor }, cb) => {
+    const roomCode = socket.data.roomCode;
+    const playerId = socket.data.playerId;
+    if (!roomCode || !playerId) return cb?.({ error: 'Not in a game' });
+    const result = games.submitBet(roomCode, playerId, targetId, amount, isFor);
+    if (result.error) return cb?.({ error: result.error });
+    io.to(roomCode).emit('game:state', result.state);
+    cb?.({ ok: true });
+  });
+
+  socket.on('player:lockBets', (_payload, cb) => {
+    const roomCode = socket.data.roomCode;
+    const playerId = socket.data.playerId;
+    if (!roomCode || !playerId) return cb?.({ error: 'Not in a game' });
+    const result = games.lockBets(roomCode, playerId);
+    if (result.error) return cb?.({ error: result.error });
     io.to(roomCode).emit('game:state', result.state);
     cb?.({ ok: true });
   });

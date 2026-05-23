@@ -13,6 +13,7 @@ const screens = {
   spectate: $('screen-spectate'),
   waiting: $('screen-waiting'),
   voting: $('screen-voting'),
+  betting: $('screen-betting'),
   question: $('screen-question'),
   finished: $('screen-finished'),
 };
@@ -88,7 +89,7 @@ async function renderQr(roomCode) {
 
   const res = await fetch(`/api/qr?url=${encodeURIComponent(joinUrl)}`);
   const { dataUrl } = await res.json();
-  $('qr-code').innerHTML = `<img src="${dataUrl}" alt="QR code to join" width="200" height="200">`;
+  $('qr-code').innerHTML = `<img src="${dataUrl}" alt="QR code to join">`;
 }
 
 function renderScoreboard(players, containerId, reveal = false) {
@@ -106,7 +107,7 @@ function renderScoreboard(players, containerId, reveal = false) {
       const isMe = p.id === myPlayerId ? ' (you)' : '';
       return `<div class="score-row${leader}">
         <span class="name">${escapeHtml(p.name)}${isMe}${extra}</span>
-        <span class="pts">${p.score}</span>
+        <span class="pts">€${p.score}</span>
       </div>`;
     })
     .join('');
@@ -145,7 +146,6 @@ function renderLobby(s) {
 function renderSpectateContent(s) {
   const content = $('spectate-content');
   const q = s.question;
-  const phaseKey = timerPhaseKey(s);
 
   if (s.phase === 'voting') {
     content.classList.remove('hidden');
@@ -154,12 +154,10 @@ function renderSpectateContent(s) {
       <span class="badge">${escapeHtml(s.roundDifficulty)} next</span>
     `;
     $('spectate-question').textContent = 'Vote for the next category';
-    $('spectate-choices').innerHTML = (s.voteOptions || [])
-      .map((opt) => `<div class="choice-display">${escapeHtml(opt.label)}</div>`)
-      .join('');
-
+    
     const tally = $('spectate-vote-tally');
     if (s.voteTally?.length) {
+      $('spectate-choices').classList.add('hidden'); // Avoid duplicating display
       tally.classList.remove('hidden');
       const maxVotes = Math.max(...s.voteTally.map((t) => t.votes));
       tally.innerHTML = s.voteTally
@@ -173,13 +171,29 @@ function renderSpectateContent(s) {
         .join('');
     } else {
       tally.classList.add('hidden');
+      $('spectate-choices').classList.remove('hidden');
+      $('spectate-choices').innerHTML = (s.voteOptions || [])
+        .map((opt) => `<div class="choice-display">${escapeHtml(opt.label)}</div>`)
+        .join('');
     }
+    return;
+  }
+
+  if (s.phase === 'betting') {
+    content.classList.remove('hidden');
+    $('spectate-vote-tally').classList.add('hidden');
+    $('spectate-choices').classList.add('hidden');
+    $('spectate-meta').innerHTML = `
+      <span class="badge">Round ${s.currentIndex + 1}/${s.totalQuestions}</span>
+    `;
+    $('spectate-question').textContent = 'Players are placing bets!';
     return;
   }
 
   if ((s.phase === 'question' || s.phase === 'reveal') && q) {
     content.classList.remove('hidden');
     $('spectate-vote-tally').classList.add('hidden');
+    $('spectate-choices').classList.remove('hidden');
     $('spectate-meta').innerHTML = `
       <span class="badge">${escapeHtml(q.category)}</span>
       <span class="badge">${escapeHtml(q.difficulty)}</span>
@@ -197,7 +211,7 @@ function renderSpectate(s) {
   showScreen('spectate');
   $('subtitle').textContent = `Room ${s.roomCode}`;
 
-  const timedPhases = ['voting', 'question'];
+  const timedPhases = ['voting', 'betting', 'question'];
   const phaseKey = timerPhaseKey(s);
   if (timedPhases.includes(s.phase) && s.timeMax) {
     $('spectate-timer').classList.remove('hidden');
@@ -245,17 +259,17 @@ function submitVote(categoryId) {
   });
 }
 
-function renderChoices(q, phase, myAnswer, containerId) {
+function renderChoices(q, phase, myAnswer, containerId, me) {
   const container = $(containerId);
   container.innerHTML = q.choices
     .map((c, i) => {
       let cls = 'choice-btn';
-      if (phase === 'question' && selectedChoice === i) cls += ' selected';
+      if (phase === 'question' && myAnswer === i) cls += ' selected';
       if (phase === 'reveal') {
         if (c.isCorrect) cls += ' correct';
         else if (myAnswer === i) cls += ' incorrect';
       }
-      const disabled = phase !== 'question' || selectedChoice !== null;
+      const disabled = phase !== 'question' || (myAnswer !== null && myAnswer !== undefined);
       return `<button class="${cls}" data-index="${i}" ${disabled ? 'disabled' : ''}>${escapeHtml(c.text)}</button>`;
     })
     .join('');
@@ -277,9 +291,12 @@ function submitAnswer(index) {
       $('answer-status').classList.remove('hidden');
       return;
     }
-    $('answer-status').textContent = 'Answer locked in!';
+    const txt = index === -1 ? 'Question skipped!' : 'Answer locked in!';
+    $('answer-status').textContent = txt;
     $('answer-status').classList.remove('hidden');
-    renderChoices(state.question, 'question', index, 'choices');
+    renderChoices(state.question, 'question', index, 'choices', state.players.find((p) => p.id === myPlayerId));
+    
+    $('btn-skip').classList.add('hidden');
   });
 }
 
@@ -347,6 +364,40 @@ function onState(s) {
     return;
   }
 
+  if (s.phase === 'betting') {
+    showScreen('betting');
+    $('subtitle').textContent = `Room ${s.roomCode}`;
+    $('bet-meta').innerHTML = `
+      <span class="badge">Round ${s.currentIndex + 1}/${s.totalQuestions}</span>
+    `;
+    renderTimerBar('bet-timer', s.timeLeft, s.timeMax, timerPhaseKey(s));
+    renderScoreboard(s.players, 'bet-scores');
+
+    if (me?.lockedBets) {
+      $('bet-controls').classList.add('hidden');
+      $('btn-lock-bets').classList.add('hidden');
+      $('bet-balance').textContent = 'Waiting for others...';
+    } else {
+      $('bet-controls').classList.remove('hidden');
+      $('btn-lock-bets').classList.remove('hidden');
+      $('bet-balance').textContent = `Your Balance: €${me?.score || 0}`;
+
+      const select = $('bet-target');
+      const curVal = select.value;
+      select.innerHTML = '<option value="">Select Player</option>' + s.players.filter(p => p.id !== me.id).map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+      if (curVal) select.value = curVal;
+    }
+
+    // List active bets
+    const betList = Object.entries(me?.bets || {}).map(([tid, bet]) => {
+      const target = s.players.find(p => p.id === tid);
+      return `<li style="padding: 5px; background: var(--surface2); border-radius: 5px; margin-bottom: 5px;">€${bet.amount} ${bet.isFor ? 'FOR' : 'AGAINST'} ${escapeHtml(target?.name || 'Unknown')}</li>`;
+    }).join('');
+    $('current-bets').innerHTML = betList;
+
+    return;
+  }
+
   if (s.phase === 'question' || s.phase === 'reveal') {
     showScreen('question');
     $('subtitle').textContent = `Room ${s.roomCode}`;
@@ -359,12 +410,27 @@ function onState(s) {
       if (!me?.hasAnswered) {
         selectedChoice = null;
         $('answer-status').classList.add('hidden');
+        $('btn-skip').classList.remove('hidden');
+        $('btn-skip').disabled = false;
       } else if (selectedChoice !== null) {
-        $('answer-status').textContent = 'Answer locked in!';
-        $('answer-status').classList.remove('hidden');
+        $('btn-skip').classList.add('hidden');
+        if (selectedChoice !== -1) {
+          $('answer-status').textContent = 'Answer locked in!';
+          $('answer-status').classList.remove('hidden');
+        }
       }
     } else {
       $('answer-status').classList.add('hidden');
+      if (me?.skipped) {
+        $('btn-skip').classList.remove('hidden');
+        $('btn-skip').disabled = true;
+        $('btn-skip').classList.add('selected');
+        $('btn-skip').textContent = 'You skipped (+€10)';
+      } else {
+        $('btn-skip').classList.add('hidden');
+        $('btn-skip').textContent = 'Skip (Get €10)';
+        $('btn-skip').classList.remove('selected');
+      }
     }
 
     $('q-meta').innerHTML = `
@@ -379,8 +445,8 @@ function onState(s) {
       renderTimerBar('q-timer', s.timeLeft, s.timeMax, timerPhaseKey(s));
     }
 
-    const myAnswer = isReveal && me?.hasAnswered ? selectedChoice : me?.hasAnswered ? selectedChoice : null;
-    renderChoices(q, s.phase, myAnswer, 'choices');
+    const myAnswer = isReveal ? me?.currentChoice : selectedChoice;
+    renderChoices(q, s.phase, myAnswer, 'choices', me);
     renderScoreboard(s.players, 'question-scores', isReveal);
 
     if (isReveal) {
@@ -395,7 +461,7 @@ function onState(s) {
     const rank = sorted.findIndex((p) => p.id === myPlayerId) + 1;
     const meFinal = s.players.find((p) => p.id === myPlayerId);
     $('final-rank').textContent = meFinal
-      ? `You finished #${rank} with ${meFinal.score} points`
+      ? `You finished #${rank} with €${meFinal.score}`
       : 'Game over';
     renderScoreboard(s.players, 'final-scores');
   }
@@ -437,6 +503,28 @@ $('btn-start').addEventListener('click', () => {
   $('btn-start').disabled = true;
   socket.emit('room:start', (res) => {
     $('btn-start').disabled = false;
+    if (res?.error) alert(res.error);
+  });
+});
+
+$('btn-skip')?.addEventListener('click', () => {
+  submitAnswer(-1);
+});
+
+$('btn-place-bet').addEventListener('click', () => {
+  const targetId = $('bet-target').value;
+  const amount = Number($('bet-amount').value);
+  const isFor = $('bet-type').value === 'for';
+
+  if (!targetId || amount < 0) return;
+  
+  socket.emit('player:bet', { targetId, amount, isFor }, (res) => {
+    if (res?.error) alert(res.error);
+  });
+});
+
+$('btn-lock-bets').addEventListener('click', () => {
+  socket.emit('player:lockBets', {}, (res) => {
     if (res?.error) alert(res.error);
   });
 });

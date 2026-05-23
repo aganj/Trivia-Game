@@ -90,6 +90,35 @@
       </div>
     </div>
 
+    <div id="screen-betting" class="screen hidden">
+      <div class="card">
+        <div id="bet-meta" class="question-meta"></div>
+        <p class="question-text" style="font-size: 1.15rem;">Place Bets</p>
+        <div id="bet-timer" class="timer-bar">
+          <div class="timer-bar-track"><div class="timer-bar-fill"></div></div>
+        </div>
+        
+        <div id="bet-balance" class="status-msg" style="font-weight: 700; margin-bottom: 0.5rem; font-size: 1.1rem; color: var(--accent2);"></div>
+        
+        <div id="bet-controls" class="choices-player" style="margin-top: 0;">
+          <select id="bet-target"></select>
+          <select id="bet-type">
+              <option value="for">For (Will get it right)</option>
+              <option value="against">Against (Will get it wrong)</option>
+          </select>
+          <input id="bet-amount" type="number" step="10" min="0" placeholder="Amount (€10 increments)">
+          <button id="btn-place-bet" class="btn btn-secondary btn-block">Set Bet</button>
+        </div>
+        
+        <ul id="current-bets" style="list-style:none; margin-top: 1rem;"></ul>
+        <button id="btn-lock-bets" class="btn btn-primary btn-block" style="margin-top: 1rem;">Ready</button>
+      </div>
+      <div class="card">
+        <h2>Scores</h2>
+        <div id="bet-scores" class="scoreboard"></div>
+      </div>
+    </div>
+
     <div id="screen-question" class="screen hidden">
       <div class="card">
         <div id="q-meta" class="question-meta"></div>
@@ -98,6 +127,7 @@
           <div class="timer-bar-track"><div class="timer-bar-fill"></div></div>
         </div>
         <div id="choices" class="choices-player"></div>
+        <button id="btn-skip" class="btn btn-secondary btn-block hidden" style="margin-top: 1rem;">Skip (Get €10)</button>
         <p id="answer-status" class="status-msg hidden"></p>
       </div>
       <div class="card">

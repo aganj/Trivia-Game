@@ -91,7 +91,7 @@ function hasPlayers(room) {
 }
 
 function isActivePhase(phase) {
-  return ['voting', 'question', 'reveal'].includes(phase);
+  return ['voting', 'betting', 'question', 'reveal'].includes(phase);
 }
 
 function sanitizePublicState(room) {
@@ -115,10 +115,7 @@ function sanitizePublicState(room) {
     };
   }
 
-  const voteTally =
-    phase === 'voting'
-      ? buildVoteTally(room)
-      : undefined;
+  const voteTally = phase === 'voting' ? buildVoteTally(room) : undefined;
 
   return {
     roomCode: room.code,
@@ -130,6 +127,10 @@ function sanitizePublicState(room) {
       hasAnswered: phase === 'question' ? p.hasAnswered : undefined,
       hasVoted: phase === 'voting' ? p.hasVoted : undefined,
       lastAnswerCorrect: phase === 'reveal' ? p.lastAnswerCorrect : undefined,
+      currentChoice: phase === 'reveal' ? p.currentChoice : undefined,
+      skipped: p.skipped,
+      lockedBets: phase === 'betting' ? p.lockedBets : undefined,
+      bets: phase === 'betting' ? p.bets : undefined,
     })),
     currentIndex: room.currentIndex,
     totalQuestions: room.totalQuestions,
@@ -155,6 +156,9 @@ function createPlayer(socketId, name) {
     categoryVote: null,
     lastAnswerCorrect: null,
     currentChoice: null,
+    skipped: false,
+    bets: {},
+    lockedBets: false,
   };
 }
 
@@ -176,18 +180,11 @@ function buildVoteTally(room) {
 }
 
 export class GameManager {
-  constructor({
-    questionsPerGame,
-    answerTimeSec,
-    voteTimeSec,
-    revealTimeSec,
-    minPlayers,
-    apiKey,
-    onTick,
-  }) {
+  constructor({ questionsPerGame, answerTimeSec, voteTimeSec, betTimeSec, revealTimeSec, minPlayers, apiKey, onTick }) {
     this.questionsPerGame = questionsPerGame;
     this.answerTimeSec = answerTimeSec;
     this.voteTimeSec = voteTimeSec;
+    this.betTimeSec = betTimeSec;
     this.revealTimeSec = revealTimeSec;
     this.minPlayers = minPlayers;
     this.apiKey = apiKey;
@@ -306,6 +303,7 @@ export class GameManager {
       return { error: 'Need at least 1 player to start' };
     }
 
+    for (const p of room.players) p.score = 0;
     room.currentIndex = 0;
     room.lastPlayedCategory = null;
     room.categoryPlayCount = {};
@@ -325,6 +323,9 @@ export class GameManager {
       p.hasAnswered = false;
       p.currentChoice = null;
       p.lastAnswerCorrect = null;
+      p.skipped = false;
+      p.bets = {};
+      p.lockedBets = false;
     }
 
     room.currentQuestion = null;
@@ -389,7 +390,7 @@ export class GameManager {
       }
       room.currentQuestion = question;
       this.recordCategoryPlayed(room, room.roundCategory);
-      this.beginQuestion(room);
+      this.beginBetting(room);
     } catch (err) {
       if (!hasPlayers(room)) {
         this.pauseGame(room);
@@ -399,6 +400,57 @@ export class GameManager {
       room.statusMessage = err.message || 'Failed to load question — vote again';
       this.beginVoting(room);
     }
+  }
+
+  beginBetting(room) {
+    room.phase = 'betting';
+    room.phaseTimeMax = this.betTimeSec;
+    room.timeLeft = this.betTimeSec;
+    room.statusMessage = 'Place your bets!';
+    
+    this.startTimer(room, () => {
+      if (!hasPlayers(room)) return this.pauseGame(room);
+      this.beginQuestion(room);
+    });
+    this.emit(room);
+  }
+
+  submitBet(roomCode, playerId, targetId, amount, isFor) {
+    const room = this.rooms.get(roomCode);
+    if (!room || room.phase !== 'betting') return { error: 'Not betting right now' };
+    const player = room.players.find(p => p.id === playerId);
+    if (!player) return { error: 'Player not found' };
+    if (player.lockedBets) return { error: 'Your bets are locked' };
+    if (playerId === targetId) return { error: 'Cannot bet on yourself' };
+    if (amount % 10 !== 0) return { error: 'Amount must be a multiple of €10' };
+    if (amount < 0) return { error: 'Amount cannot be negative' };
+
+    const oldAmount = player.bets[targetId]?.amount || 0;
+    if (player.score + oldAmount < amount) return { error: 'Not enough money' };
+
+    player.score += oldAmount; // refund old
+    player.score -= amount;    // deduct new
+
+    if (amount === 0) {
+      delete player.bets[targetId];
+    } else {
+      player.bets[targetId] = { amount, isFor };
+    }
+    return { state: sanitizePublicState(room) };
+  }
+
+  lockBets(roomCode, playerId) {
+    const room = this.rooms.get(roomCode);
+    if (!room || room.phase !== 'betting') return { error: 'Not betting right now' };
+    const player = room.players.find(p => p.id === playerId);
+    if (!player) return { error: 'Player not found' };
+
+    player.lockedBets = true;
+    if (room.players.every(p => p.lockedBets)) {
+      this.clearTimer(roomCode);
+      this.beginQuestion(room);
+    }
+    return { state: sanitizePublicState(room) };
   }
 
   async fetchQuestion(category, difficulty) {
@@ -477,15 +529,19 @@ export class GameManager {
 
     const idx = Number(choiceIndex);
     const q = room.currentQuestion;
-    if (idx < 0 || idx >= q.choices.length) return { error: 'Invalid choice' };
+
+    if (idx === -1) {
+      player.skipped = true;
+    } else if (idx < 0 || idx >= q.choices.length) {
+      return { error: 'Invalid choice' };
+    }
 
     player.hasAnswered = true;
     player.currentChoice = idx;
 
     if (room.players.every((p) => p.hasAnswered)) {
       this.clearTimer(roomCode);
-      const result = this.revealAnswers(roomCode);
-      return result;
+      return this.revealAnswers(roomCode);
     }
 
     return { state: sanitizePublicState(room) };
@@ -502,14 +558,32 @@ export class GameManager {
     this.clearTimer(roomCode);
     const q = room.currentQuestion;
 
+    // Process correctness and point allocation
     for (const p of room.players) {
-      if (p.currentChoice === q.correctIndex) {
-        p.score += 1;
+      if (p.skipped) {
+        p.score += 10;
+        p.lastAnswerCorrect = false;
+      } else if (p.currentChoice === q.correctIndex) {
+        p.score += 50;
         p.lastAnswerCorrect = true;
       } else if (p.hasAnswered) {
         p.lastAnswerCorrect = false;
       } else {
         p.lastAnswerCorrect = null;
+      }
+    }
+
+    // Process bets
+    for (const p of room.players) {
+      if (!p.bets) continue;
+      for (const [targetId, bet] of Object.entries(p.bets)) {
+        const target = room.players.find(t => t.id === targetId);
+        if (!target) continue;
+        const targetRight = target.lastAnswerCorrect === true;
+        
+        if ((bet.isFor && targetRight) || (!bet.isFor && !targetRight)) {
+          p.score += bet.amount * 2; // refund original bet amount + matching profit
+        }
       }
     }
 

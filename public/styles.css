@@ -29,6 +29,7 @@ body {
 
 .app {
   max-width: 960px;
+  width: 100%;
   margin: 0 auto;
   padding: 1.5rem;
 }
@@ -60,6 +61,8 @@ header p {
   padding: 1.5rem;
   margin-bottom: 1rem;
   border: 1px solid rgba(255, 255, 255, 0.06);
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .card h2 {
@@ -180,10 +183,14 @@ label {
   padding: 0.5rem;
   border-radius: 10px;
   display: inline-block;
+  max-width: 100%;
 }
 
 #qr-code img {
   display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
 }
 
 .players-list {
