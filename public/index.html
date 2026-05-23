@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Trivia Game</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
   <script src="/socket.io/socket.io.js"></script>
 </head>
@@ -36,7 +37,7 @@
 
     <div id="screen-lobby" class="screen hidden">
       <div class="card join-panel">
-        <div>
+        <div class="code-section">
           <h2>Room code</h2>
           <div id="room-code" class="room-code">----</div>
           <p class="join-url" id="join-url"></p>
@@ -59,16 +60,17 @@
         <div id="spectate-meta" class="question-meta"></div>
         <p id="spectate-question" class="question-text" style="font-size: 1.25rem;"></p>
         <div id="spectate-vote-tally" class="vote-tally hidden"></div>
+        <div id="spectate-bets" class="spectate-bets-list hidden"></div>
         <div id="spectate-choices" class="choices-display"></div>
       </div>
       <div class="card">
-        <h2>Scores</h2>
+        <h2>Leaderboard</h2>
         <div id="spectate-scores" class="scoreboard"></div>
       </div>
     </div>
 
     <div id="screen-waiting" class="screen hidden">
-      <div class="card">
+      <div class="card text-center">
         <p id="waiting-msg" class="status-msg"></p>
         <p id="waiting-name" class="status-msg success" style="margin-top: 0.5rem;"></p>
       </div>
@@ -110,7 +112,7 @@
           <button id="btn-place-bet" class="btn btn-secondary btn-block">Set Bet</button>
         </div>
         
-        <ul id="current-bets" style="list-style:none; margin-top: 1rem;"></ul>
+        <ul id="current-bets" class="bet-list-player"></ul>
         <button id="btn-lock-bets" class="btn btn-primary btn-block" style="margin-top: 1rem;">Ready</button>
       </div>
       <div class="card">
@@ -137,7 +139,7 @@
     </div>
 
     <div id="screen-finished" class="screen hidden">
-      <div class="card question-box">
+      <div class="card question-box text-center">
         <h2 style="color: var(--muted);">Game over</h2>
         <div id="final-rank" class="question-text" style="font-size: 1.25rem; margin-top: 1rem;"></div>
       </div>

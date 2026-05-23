@@ -135,7 +135,7 @@ function renderLobby(s) {
 
   if (isSetupDevice) {
     $('lobby-hint').textContent = s.canStart
-      ? 'At least one player has joined — start when ready (you play on another phone)'
+      ? 'At least one player has joined — start when ready'
       : 'Share the code — players join on their phones';
     renderQr(s.roomCode);
   } else {
@@ -149,6 +149,7 @@ function renderSpectateContent(s) {
 
   if (s.phase === 'voting') {
     content.classList.remove('hidden');
+    $('spectate-bets').classList.add('hidden');
     $('spectate-meta').innerHTML = `
       <span class="badge">Round ${s.currentIndex + 1}/${s.totalQuestions}</span>
       <span class="badge">${escapeHtml(s.roundDifficulty)} next</span>
@@ -157,7 +158,7 @@ function renderSpectateContent(s) {
     
     const tally = $('spectate-vote-tally');
     if (s.voteTally?.length) {
-      $('spectate-choices').classList.add('hidden'); // Avoid duplicating display
+      $('spectate-choices').classList.add('hidden');
       tally.classList.remove('hidden');
       const maxVotes = Math.max(...s.voteTally.map((t) => t.votes));
       tally.innerHTML = s.voteTally
@@ -187,13 +188,42 @@ function renderSpectateContent(s) {
       <span class="badge">Round ${s.currentIndex + 1}/${s.totalQuestions}</span>
     `;
     $('spectate-question').textContent = 'Players are placing bets!';
+    
+    // Render all active bets globally
+    $('spectate-bets').classList.remove('hidden');
+    let allBetsHtml = '';
+    for (const p of s.players) {
+      if (p.bets) {
+        for (const [targetId, bet] of Object.entries(p.bets)) {
+          const target = s.players.find(t => t.id === targetId);
+          if (target) {
+            const betTypeClass = bet.isFor ? 'bet-for' : 'bet-against';
+            const betTypeText = bet.isFor ? 'FOR' : 'AGAINST';
+            allBetsHtml += `
+              <div class="spectate-bet-row">
+                <span class="name">${escapeHtml(p.name)}</span> 
+                <span class="muted" style="font-size: 0.9rem;">bet</span> 
+                <span class="pts">€${bet.amount}</span> 
+                <span class="badge ${betTypeClass}">${betTypeText}</span> 
+                <span class="name">${escapeHtml(target.name)}</span>
+              </div>
+            `;
+          }
+        }
+      }
+    }
+    if (!allBetsHtml) allBetsHtml = '<p class="status-msg">Waiting for bets...</p>';
+    $('spectate-bets').innerHTML = allBetsHtml;
+
     return;
   }
 
   if ((s.phase === 'question' || s.phase === 'reveal') && q) {
     content.classList.remove('hidden');
     $('spectate-vote-tally').classList.add('hidden');
+    $('spectate-bets').classList.add('hidden');
     $('spectate-choices').classList.remove('hidden');
+    
     $('spectate-meta').innerHTML = `
       <span class="badge">${escapeHtml(q.category)}</span>
       <span class="badge">${escapeHtml(q.difficulty)}</span>
@@ -318,6 +348,7 @@ function onState(s) {
       $('spectate-timer').classList.add('hidden');
       $('spectate-content').classList.remove('hidden');
       $('spectate-vote-tally').classList.add('hidden');
+      $('spectate-bets').classList.add('hidden');
       $('spectate-meta').innerHTML = '';
       $('spectate-question').textContent = 'Game over';
       $('spectate-choices').innerHTML = '';
@@ -388,10 +419,10 @@ function onState(s) {
       if (curVal) select.value = curVal;
     }
 
-    // List active bets
+    // List active bets on the player's personal screen
     const betList = Object.entries(me?.bets || {}).map(([tid, bet]) => {
       const target = s.players.find(p => p.id === tid);
-      return `<li style="padding: 5px; background: var(--surface2); border-radius: 5px; margin-bottom: 5px;">€${bet.amount} ${bet.isFor ? 'FOR' : 'AGAINST'} ${escapeHtml(target?.name || 'Unknown')}</li>`;
+      return `<li>€${bet.amount} ${bet.isFor ? 'FOR' : 'AGAINST'} ${escapeHtml(target?.name || 'Unknown')}</li>`;
     }).join('');
     $('current-bets').innerHTML = betList;
 

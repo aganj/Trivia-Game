@@ -78,7 +78,23 @@ function tallyVotes(room) {
     }
   }
 
-  if (winners.length) {
+  // Tie breaker logic: favor the player with the least money
+  if (winners.length === 1) {
+    return winners[0];
+  } else if (winners.length > 1) {
+    let lowestScore = Infinity;
+    for (const p of room.players) {
+      if (winners.includes(p.categoryVote) && p.score < lowestScore) {
+        lowestScore = p.score;
+      }
+    }
+    const lowestVotersCats = room.players
+      .filter(p => winners.includes(p.categoryVote) && p.score === lowestScore)
+      .map(p => p.categoryVote);
+
+    if (lowestVotersCats.length > 0) {
+      return lowestVotersCats[Math.floor(Math.random() * lowestVotersCats.length)];
+    }
     return winners[Math.floor(Math.random() * winners.length)];
   }
 
