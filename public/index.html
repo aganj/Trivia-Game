@@ -3,157 +3,169 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Trivia Game</title>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <title>WHAT THE PEE</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-  <div class="app player">
-    <header>
-      <h1>Trivia Game</h1>
-      <p id="subtitle">Create or join a room</p>
-    </header>
+  <div class="layout-container">
+    <main class="main-content">
+      <header>
+        <h1 class="header-title">WHAT THE <span>PEE</span></h1>
+        <p id="subtitle">Create or join a room</p>
+      </header>
 
-    <div id="screen-home" class="screen">
-      <div class="card">
-        <h2>Join a game</h2>
-        <label for="room-input">Room code</label>
-        <input id="room-input" type="text" maxlength="4" placeholder="ABCD" autocapitalize="characters" autocomplete="off">
-        <label for="join-name">Your name</label>
-        <input id="join-name" type="text" maxlength="20" placeholder="Player name" autocomplete="name">
-        <button id="btn-join" class="btn btn-primary btn-block">Join room</button>
-        <p id="join-error" class="status-msg error hidden"></p>
-      </div>
-      <div id="home-create-card" class="card">
-        <h2>Create a game</h2>
-        <p class="status-msg" style="margin-bottom: 1rem;">
-          Sets up the room on this device. Join as a player on another phone.
-        </p>
-        <button id="btn-create" class="btn btn-secondary btn-block">Create room</button>
-        <p id="create-error" class="status-msg error hidden"></p>
-      </div>
-    </div>
-
-    <div id="screen-lobby" class="screen hidden">
-      <div class="card join-panel">
-        <div class="code-section">
-          <h2>Room code</h2>
-          <div id="room-code" class="room-code">----</div>
-          <p class="join-url" id="join-url"></p>
+      <div id="screen-home" class="screen">
+        <div class="card">
+          <h2>Join a game</h2>
+          <label for="room-input">Room code</label>
+          <input id="room-input" type="text" maxlength="4" placeholder="ABCD" autocapitalize="characters" autocomplete="off">
+          <label for="join-name">Your name</label>
+          <input id="join-name" type="text" maxlength="20" placeholder="Player name" autocomplete="name">
+          <label for="join-avatar">Avatar (Optional)</label>
+          <input id="join-avatar" type="file" accept="image/*">
+          <button id="btn-join" class="btn btn-primary btn-block" style="margin-top: 1rem;">Join room</button>
+          <p id="join-error" class="status-msg error hidden"></p>
         </div>
-        <div id="qr-code"></div>
-      </div>
-      <div class="card">
-        <h2>Players (<span id="player-count">0</span>)</h2>
-        <ul id="players-list" class="players-list"></ul>
-        <button id="btn-start" class="btn btn-primary btn-block hidden" style="margin-top: 1rem;">Start game</button>
-        <p id="lobby-hint" class="status-msg" style="margin-top: 1rem;"></p>
-      </div>
-    </div>
-
-    <div id="screen-spectate" class="screen hidden">
-      <div id="spectate-content" class="card hidden">
-        <div id="spectate-timer" class="timer-bar hidden">
-          <div class="timer-bar-track"><div class="timer-bar-fill"></div></div>
+        <div id="home-create-card" class="card">
+          <h2>Create a game</h2>
+          <p class="status-msg" style="margin-bottom: 1rem; font-size: 0.9rem;">
+            Sets up the room on this device. Join as a player on another phone.
+          </p>
+          <button id="btn-create" class="btn btn-secondary btn-block">Create room</button>
+          <p id="create-error" class="status-msg error hidden"></p>
         </div>
-        <div id="spectate-meta" class="question-meta"></div>
-        <p id="spectate-question" class="question-text" style="font-size: 1.25rem;"></p>
-        <div id="spectate-vote-tally" class="vote-tally hidden"></div>
-        <div id="spectate-bets" class="spectate-bets-list hidden"></div>
-        <div id="spectate-choices" class="choices-display"></div>
       </div>
-      <div class="card">
-        <h2>Leaderboard</h2>
-        <div id="spectate-scores" class="scoreboard"></div>
-      </div>
-    </div>
 
-    <div id="screen-waiting" class="screen hidden">
-      <div class="card text-center">
-        <p id="waiting-msg" class="status-msg"></p>
-        <p id="waiting-name" class="status-msg success" style="margin-top: 0.5rem;"></p>
-      </div>
-    </div>
-
-    <div id="screen-voting" class="screen hidden">
-      <div class="card">
-        <div id="vote-meta" class="question-meta"></div>
-        <p id="vote-prompt" class="question-text" style="font-size: 1.15rem;">Pick the next category</p>
-        <div id="vote-timer" class="timer-bar">
-          <div class="timer-bar-track"><div class="timer-bar-fill"></div></div>
+      <div id="screen-lobby" class="screen hidden">
+        <div class="card join-panel">
+          <div class="code-section">
+            <h2>Room code</h2>
+            <div id="room-code" class="room-code">----</div>
+            <p class="join-url" id="join-url"></p>
+          </div>
+          <div id="qr-code"></div>
         </div>
-        <div id="vote-options" class="choices-player"></div>
-        <p id="vote-status" class="status-msg hidden"></p>
+        <div class="card">
+          <h2>Players (<span id="player-count">0</span>)</h2>
+          <ul id="players-list" class="players-list"></ul>
+          
+          <div id="lobby-host-controls" class="hidden" style="margin-top: 1.5rem;">
+            <label for="game-length">Number of Questions:</label>
+            <input type="number" id="game-length" value="10" min="2" max="50">
+            <button id="btn-start" class="btn btn-primary btn-block">Start game</button>
+          </div>
+          <p id="lobby-hint" class="status-msg" style="margin-top: 1rem;"></p>
+        </div>
       </div>
-      <div class="card">
-        <h2>Scores</h2>
-        <div id="vote-scores" class="scoreboard"></div>
-      </div>
-    </div>
 
-    <div id="screen-betting" class="screen hidden">
-      <div class="card">
-        <div id="bet-meta" class="question-meta"></div>
-        <p class="question-text" style="font-size: 1.15rem;">Place Bets</p>
-        <div id="bet-timer" class="timer-bar">
-          <div class="timer-bar-track"><div class="timer-bar-fill"></div></div>
+      <div id="active-game-header" class="active-game-header hidden">
+        <div class="progress-container">
+          <div class="question-count" id="header-q-count">Question -- / --</div>
+          <div class="progress-bar"><div class="progress-fill" id="header-progress-fill"></div></div>
+        </div>
+        <div class="circular-timer hidden" id="header-timer">
+          <div class="timer-value" id="header-timer-val">--s</div>
+        </div>
+      </div>
+
+      <div id="screen-spectate" class="screen hidden">
+        <div id="spectate-content" class="card hidden">
+          <div id="spectate-meta" class="question-meta"></div>
+          <p id="spectate-question" class="question-text"></p>
+          <div id="spectate-vote-tally" class="vote-tally hidden"></div>
+          <div id="spectate-bets" class="spectate-bets-list hidden"></div>
+          <div id="spectate-choices" class="choices-display"></div>
+        </div>
+        <div id="spectate-scoreboard-card" class="card hidden">
+          <h2>Live Ranking Board of Players</h2>
+          <div id="spectate-scores" class="scoreboard"></div>
+        </div>
+      </div>
+
+      <div id="screen-waiting" class="screen hidden">
+        <div class="card text-center">
+          <p id="waiting-msg" class="status-msg"></p>
+          <p id="waiting-name" class="status-msg success" style="margin-top: 0.5rem;"></p>
+        </div>
+      </div>
+
+      <div id="screen-voting" class="screen hidden">
+        <div class="card">
+          <div id="vote-meta" class="question-meta"></div>
+          <p id="vote-prompt" class="question-text">Pick the next category</p>
+          <div id="vote-options" class="choices-player"></div>
+          <p id="vote-status" class="status-msg hidden"></p>
+        </div>
+      </div>
+
+      <div id="screen-betting" class="screen hidden">
+        <div class="card">
+          <div id="bet-meta" class="question-meta"></div>
+          <p class="question-text">Place Bets</p>
+          
+          <div id="bet-balance" class="status-msg neon-text" style="font-weight: 800; margin-bottom: 0.5rem; font-size: 1.2rem;"></div>
+          
+          <div id="bet-controls" class="choices-player" style="margin-top: 0;">
+            <select id="bet-target"></select>
+            <select id="bet-type">
+                <option value="for">For (Will get it right)</option>
+                <option value="against">Against (Will get it wrong)</option>
+            </select>
+            
+            <div class="slider-container" style="margin-bottom: 1rem;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                <label>Bet Amount</label>
+                <span id="bet-amount-display" style="font-weight: bold; color: var(--accent2);">€0</span>
+              </div>
+              <input type="range" id="bet-amount" min="0" max="0" step="10" value="0">
+            </div>
+
+            <button id="btn-place-bet" class="btn btn-secondary btn-block">Set Bet</button>
+          </div>
+          
+          <ul id="current-bets" class="bet-list-player"></ul>
+          <button id="btn-lock-bets" class="btn btn-primary btn-block" style="margin-top: 1rem;">Ready</button>
+          <p id="bet-status" class="status-msg hidden" style="margin-top: 1rem;"></p>
+        </div>
+      </div>
+
+      <div id="screen-question" class="screen hidden">
+        <div class="card">
+          <div id="q-meta" class="question-meta"></div>
+          <p id="q-text" class="question-text"></p>
+          <div id="choices" class="choices-player choices-grid"></div>
+          <button id="btn-skip" class="btn btn-secondary btn-block hidden" style="margin-top: 1.5rem;">Skip (Get €10)</button>
+          <p id="answer-status" class="status-msg hidden"></p>
         </div>
         
-        <div id="bet-balance" class="status-msg" style="font-weight: 700; margin-bottom: 0.5rem; font-size: 1.1rem; color: var(--accent2);"></div>
-        
-        <div id="bet-controls" class="choices-player" style="margin-top: 0;">
-          <select id="bet-target"></select>
-          <select id="bet-type">
-              <option value="for">For (Will get it right)</option>
-              <option value="against">Against (Will get it wrong)</option>
-          </select>
-          <input id="bet-amount" type="number" step="10" min="0" placeholder="Amount (€10 increments)">
-          <button id="btn-place-bet" class="btn btn-secondary btn-block">Set Bet</button>
+        <div id="question-scoreboard-card" class="card hidden">
+          <h2>Live Ranking Board of Players</h2>
+          <div id="question-scores" class="scoreboard"></div>
+        </div>
+      </div>
+
+      <div id="screen-finished" class="screen hidden">
+        <div class="card question-box text-center">
+          <h2 style="color: var(--muted);">Game over</h2>
+          <div id="final-rank" class="question-text" style="font-size: 1.5rem; margin-top: 1rem;"></div>
+          <button id="btn-restart" class="btn btn-secondary btn-block hidden" style="margin-top: 1rem;">Back to Lobby</button>
         </div>
         
-        <ul id="current-bets" class="bet-list-player"></ul>
-        <button id="btn-lock-bets" class="btn btn-primary btn-block" style="margin-top: 1rem;">Ready</button>
-      </div>
-      <div class="card">
-        <h2>Scores</h2>
-        <div id="bet-scores" class="scoreboard"></div>
-      </div>
-    </div>
-
-    <div id="screen-question" class="screen hidden">
-      <div class="card">
-        <div id="q-meta" class="question-meta"></div>
-        <p id="q-text" class="question-text" style="font-size: 1.25rem;"></p>
-        <div id="q-timer" class="timer-bar">
-          <div class="timer-bar-track"><div class="timer-bar-fill"></div></div>
+        <div class="card" id="final-scoreboard-card">
+          <h2>Final Ranking Board</h2>
+          <div id="final-scores" class="scoreboard"></div>
         </div>
-        <div id="choices" class="choices-player"></div>
-        <button id="btn-skip" class="btn btn-secondary btn-block hidden" style="margin-top: 1rem;">Skip (Get €10)</button>
-        <p id="answer-status" class="status-msg hidden"></p>
       </div>
-      <div class="card">
-        <h2>Scores</h2>
-        <div id="question-scores" class="scoreboard"></div>
-      </div>
-    </div>
 
-    <div id="screen-finished" class="screen hidden">
-      <div class="card question-box text-center">
-        <h2 style="color: var(--muted);">Game over</h2>
-        <div id="final-rank" class="question-text" style="font-size: 1.25rem; margin-top: 1rem;"></div>
-      </div>
-      <div class="card">
-        <h2>Final scores</h2>
-        <div id="final-scores" class="scoreboard"></div>
-      </div>
-      <button id="btn-new-game" class="btn btn-primary btn-block">Play again</button>
-    </div>
-
-    <p class="credit">
-      <a href="https://the-trivia-api.com/" target="_blank" rel="noopener">The Trivia API</a>
-    </p>
+    </main>
   </div>
+
+  <p class="credit">
+    Powered by <a href="https://the-trivia-api.com/" target="_blank" rel="noopener">The Trivia API</a>
+  </p>
+
   <script type="module" src="/app.js"></script>
 </body>
 </html>

@@ -12,8 +12,9 @@ const PORT = Number(process.env.PORT) || 3000;
 const QUESTIONS_PER_GAME = Number(process.env.QUESTIONS_PER_GAME) || 10;
 const ANSWER_TIME_SEC = Number(process.env.ANSWER_TIME_SEC) || 20;
 const VOTE_TIME_SEC = Number(process.env.VOTE_TIME_SEC) || 15;
-const REVEAL_TIME_SEC = Number(process.env.REVEAL_TIME_SEC) || 6; // slightly longer to read bets
-const BET_TIME_SEC = Number(process.env.BET_TIME_SEC) || 20;
+const REVEAL_TIME_SEC = Number(process.env.REVEAL_TIME_SEC) || 6;
+const BET_TIME_SEC = Number(process.env.BET_TIME_SEC) || 30; // Increased betting time
+const BET_REVEAL_TIME_SEC = 5; // Window of time to see locked bets
 const MIN_PLAYERS = 1;
 
 const app = express();
@@ -25,6 +26,7 @@ const games = new GameManager({
   voteTimeSec: VOTE_TIME_SEC,
   revealTimeSec: REVEAL_TIME_SEC,
   betTimeSec: BET_TIME_SEC,
+  betRevealTimeSec: BET_REVEAL_TIME_SEC,
   minPlayers: MIN_PLAYERS,
   apiKey: process.env.TRIVIA_API_KEY,
   onTick: (roomCode, state) => {
@@ -70,22 +72,16 @@ app.get('/api/qr', async (req, res) => {
 io.on('connection', (socket) => {
   socket.on('room:create', (_payload, cb) => {
     const result = games.createRoom(socket.id);
-    if (result.error) {
-      cb?.({ error: result.error });
-      return;
-    }
+    if (result.error) return cb?.({ error: result.error });
     socket.join(result.roomCode);
     socket.data.roomCode = result.roomCode;
     socket.data.isOrganizer = true;
     cb?.({ roomCode: result.roomCode, state: result.state });
   });
 
-  socket.on('room:join', ({ roomCode, name }, cb) => {
-    const result = games.joinRoom(roomCode, socket.id, name);
-    if (result.error) {
-      cb?.({ error: result.error });
-      return;
-    }
+  socket.on('room:join', ({ roomCode, name, avatar }, cb) => {
+    const result = games.joinRoom(roomCode, socket.id, name, avatar);
+    if (result.error) return cb?.({ error: result.error });
     socket.join(result.roomCode);
     socket.data.roomCode = result.roomCode;
     socket.data.playerId = result.playerId;
@@ -93,19 +89,22 @@ io.on('connection', (socket) => {
     cb?.({ playerId: result.playerId, state: result.state });
   });
 
-  socket.on('room:start', (cb) => {
+  socket.on('room:start', ({ totalQuestions }, cb) => {
     const roomCode = socket.data.roomCode;
     if (!roomCode || !socket.data.isOrganizer) {
-      cb?.({ error: 'Only the device that created the room can start the game' });
-      return;
+      return cb?.({ error: 'Only the device that created the room can start the game' });
     }
-    const result = games.startGame(roomCode, socket.id, {
-      asOrganizer: true,
-    });
-    if (result.error) {
-      cb?.({ error: result.error });
-      return;
-    }
+    const result = games.startGame(roomCode, socket.id, { asOrganizer: true, totalQuestions });
+    if (result.error) return cb?.({ error: result.error });
+    io.to(roomCode).emit('game:state', result.state);
+    cb?.({ ok: true });
+  });
+
+  socket.on('room:restart', (cb) => {
+    const roomCode = socket.data.roomCode;
+    if (!roomCode) return cb?.({ error: 'Not in a game' });
+    const result = games.restartRoom(roomCode, socket.id);
+    if (result.error) return cb?.({ error: result.error });
     io.to(roomCode).emit('game:state', result.state);
     cb?.({ ok: true });
   });
@@ -113,15 +112,9 @@ io.on('connection', (socket) => {
   socket.on('player:vote', ({ categoryId }, cb) => {
     const roomCode = socket.data.roomCode;
     const playerId = socket.data.playerId;
-    if (!roomCode || !playerId) {
-      cb?.({ error: 'Not in a game' });
-      return;
-    }
+    if (!roomCode || !playerId) return cb?.({ error: 'Not in a game' });
     const result = games.submitVote(roomCode, playerId, categoryId);
-    if (result.error) {
-      cb?.({ error: result.error });
-      return;
-    }
+    if (result.error) return cb?.({ error: result.error });
     io.to(roomCode).emit('game:state', result.state);
     cb?.({ ok: true });
   });
@@ -149,15 +142,9 @@ io.on('connection', (socket) => {
   socket.on('player:answer', ({ choiceIndex }, cb) => {
     const roomCode = socket.data.roomCode;
     const playerId = socket.data.playerId;
-    if (!roomCode || !playerId) {
-      cb?.({ error: 'Not in a game' });
-      return;
-    }
+    if (!roomCode || !playerId) return cb?.({ error: 'Not in a game' });
     const result = games.submitAnswer(roomCode, playerId, choiceIndex);
-    if (result.error) {
-      cb?.({ error: result.error });
-      return;
-    }
+    if (result.error) return cb?.({ error: result.error });
     io.to(roomCode).emit('game:state', result.state);
     cb?.({ ok: true });
   });
@@ -165,11 +152,7 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     const roomCode = socket.data.roomCode;
     if (!roomCode) return;
-
-    if (socket.data.isOrganizer) {
-      return;
-    }
-
+    if (socket.data.isOrganizer) return;
     const playerId = socket.data.playerId;
     if (!playerId) return;
 
